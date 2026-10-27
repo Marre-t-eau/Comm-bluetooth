@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CommBluetooth.Core.Tests", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CommBluetooth.Windows", "src\CommBluetooth.Windows\CommBluetooth.Windows.csproj", "{D27C2010-6DC3-4CDA-AC4E-1DC010B257A9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CommBluetooth.Phone", "src\CommBluetooth.Phone\CommBluetooth.Phone.csproj", "{EEDBCB4B-B966-4D61-8148-341346F24985}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -75,6 +77,18 @@ Global
 		{D27C2010-6DC3-4CDA-AC4E-1DC010B257A9}.Release|x64.Build.0 = Release|Any CPU
 		{D27C2010-6DC3-4CDA-AC4E-1DC010B257A9}.Release|x86.ActiveCfg = Release|Any CPU
 		{D27C2010-6DC3-4CDA-AC4E-1DC010B257A9}.Release|x86.Build.0 = Release|Any CPU
+		{EEDBCB4B-B966-4D61-8148-341346F24985}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EEDBCB4B-B966-4D61-8148-341346F24985}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EEDBCB4B-B966-4D61-8148-341346F24985}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{EEDBCB4B-B966-4D61-8148-341346F24985}.Debug|x64.Build.0 = Debug|Any CPU
+		{EEDBCB4B-B966-4D61-8148-341346F24985}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{EEDBCB4B-B966-4D61-8148-341346F24985}.Debug|x86.Build.0 = Debug|Any CPU
+		{EEDBCB4B-B966-4D61-8148-341346F24985}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EEDBCB4B-B966-4D61-8148-341346F24985}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EEDBCB4B-B966-4D61-8148-341346F24985}.Release|x64.ActiveCfg = Release|Any CPU
+		{EEDBCB4B-B966-4D61-8148-341346F24985}.Release|x64.Build.0 = Release|Any CPU
+		{EEDBCB4B-B966-4D61-8148-341346F24985}.Release|x86.ActiveCfg = Release|Any CPU
+		{EEDBCB4B-B966-4D61-8148-341346F24985}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -84,5 +98,6 @@ Global
 		{8DF86FD4-3765-4C32-83DA-707E82F5AB3A} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 		{D85918AD-06E2-48B8-B8A6-12C58F30F163} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{D27C2010-6DC3-4CDA-AC4E-1DC010B257A9} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{EEDBCB4B-B966-4D61-8148-341346F24985} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

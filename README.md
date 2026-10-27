@@ -11,7 +11,7 @@ PC Windows ──(Wi-Fi, Opus/UDP)──▶ Téléphone Android ──(Bluetooth
 | Étape | Contenu | État |
 |---|---|---|
 | 1 | Programme Windows : capture du son, compression Opus, envoi réseau, interface | ✅ |
-| 2 | Application Android (.NET MAUI) : réception, tampon anti-coupures, lecture vers les écouteurs | à venir |
+| 2 | Application Android (.NET MAUI) : réception, tampon anti-coupures, lecture vers les écouteurs | ✅ |
 | 3 | Finitions : latence, reconnexion automatique, .exe/.apk prêts à installer, guide | à venir |
 
 ## Organisation du code
@@ -19,6 +19,7 @@ PC Windows ──(Wi-Fi, Opus/UDP)──▶ Téléphone Android ──(Bluetooth
 | Dossier | Rôle |
 |---|---|
 | `src/CommBluetooth.Core` | Bibliothèque commune PC/Android : protocole réseau, conversion audio, encodage Opus, envoi/réception UDP, découverte automatique. |
+| `src/CommBluetooth.Phone` | Application Android (.NET MAUI) : service de premier plan, lecture AudioTrack vers la sortie Bluetooth, interface. |
 | `src/CommBluetooth.Windows` | Programme Windows (WinForms) : capture WASAPI « ce que le PC joue » et interface. |
 | `tools/CommBluetooth.TestReceiver` | Récepteur de test en console : se comporte comme le téléphone et enregistre le son reçu dans un `.wav`. |
 | `tests/CommBluetooth.Core.Tests` | Tests automatisés (protocole, rééchantillonnage, Opus, chaîne réseau complète). |
@@ -29,6 +30,7 @@ PC Windows ──(Wi-Fi, Opus/UDP)──▶ Téléphone Android ──(Bluetooth
 * **Conversion** : n'importe quel format (mono, 5.1, 44,1 / 96 kHz…) est ramené en stéréo 48 kHz.
 * **Compression** : Opus en trames de 10 ms (96 à 256 kb/s), via [Concentus](https://github.com/lostromb/concentus), 100 % C#.
 * **Réseau** : UDP. Chaque paquet porte un identifiant de session et un numéro de séquence pour repérer les pertes. Un *keepalive* est envoyé pendant les silences.
+* **Réception (téléphone)** : un tampon anti-gigue remet les trames dans l'ordre, masque les pertes avec Opus et jette l'avance excessive pour garder une latence stable (≈ 40, 80 ou 150 ms au choix). Le son est joué avec AudioTrack ; Android l'envoie de lui-même aux écouteurs Bluetooth connectés.
 * **Découverte** : le téléphone annonce sa présence en broadcast (port UDP 50505) ; le programme Windows l'affiche dans la liste. Le son est envoyé sur le port UDP 50506.
 
 Le détail du format des paquets est dans [`Packet.cs`](src/CommBluetooth.Core/Protocol/Packet.cs).
@@ -38,10 +40,20 @@ Le détail du format des paquets est dans [`Packet.cs`](src/CommBluetooth.Core/P
 Prérequis : [SDK .NET 10](https://dotnet.microsoft.com/download/dotnet/10.0).
 
 ```powershell
-dotnet build
-dotnet test
+dotnet test tests/CommBluetooth.Core.Tests
 dotnet run --project src/CommBluetooth.Windows          # programme Windows
 ```
+
+### Application Android
+
+L'`.apk` est compilé automatiquement par GitHub Actions (onglet **Actions**, artefact `CommBluetooth-android`). Pour le compiler soi-même :
+
+```powershell
+dotnet workload install maui-android
+dotnet publish src/CommBluetooth.Phone -c Release -f net10.0-android
+```
+
+Sur le téléphone, autorisez l'installation d'applications de source inconnue, installez l'`.apk`, connectez vos écouteurs, puis appuyez sur **Démarrer**.
 
 ### Tester sans téléphone
 
