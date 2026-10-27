@@ -18,7 +18,7 @@
                 </VerticalStackLayout>
             </Border>
 
-            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="16" RowSpacing="10">
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="16" RowSpacing="10">
                 <Label Text="Nom sur le réseau" TextColor="{StaticResource Gray500}" />
                 <Label x:Name="NameLabel" Grid.Column="1" />
                 <Label Text="Adresse IP" Grid.Row="1" TextColor="{StaticResource Gray500}" />
@@ -27,12 +27,25 @@
                 <Label x:Name="OutputLabel" Grid.Row="2" Grid.Column="1" Text="—" />
                 <Label Text="Latence" Grid.Row="3" TextColor="{StaticResource Gray500}" />
                 <Label x:Name="LatencyLabel" Grid.Row="3" Grid.Column="1" Text="—" />
-                <Label Text="Diagnostic" Grid.Row="4" TextColor="{StaticResource Gray500}" />
-                <Label x:Name="DiagnosticLabel" Grid.Row="4" Grid.Column="1" Text="—" FontSize="13" />
             </Grid>
 
+            <Border x:Name="DiagnosticPanel" Padding="16" StrokeShape="RoundRectangle 12"
+                    Stroke="{StaticResource Gray200}" IsVisible="False">
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Diagnostic" FontFamily="OpenSansSemibold" />
+                    <Label x:Name="DiagnosticLabel" Text="—" FontSize="13" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Button x:Name="ToggleButton" Text="Démarrer" Clicked="OnToggleClicked" HeightRequest="52" FontSize="17" />
+
+            <Label FontSize="13" TextColor="{StaticResource Gray500}"
+                   Text="1. Connectez vos écouteurs Bluetooth à ce téléphone.&#10;2. Appuyez sur Démarrer.&#10;3. Sur le PC, choisissez ce téléphone dans Comm Bluetooth puis cliquez sur Diffuser." />
+
+            <Label Text="Réglages" FontSize="20" FontFamily="OpenSansSemibold" Margin="0,12,0,0" />
+
             <VerticalStackLayout Spacing="4">
-                <Label Text="Réglage du tampon" TextColor="{StaticResource Gray500}" />
+                <Label Text="Tampon" />
                 <Picker x:Name="LatencyPicker" SelectedIndexChanged="OnLatencyChanged" />
                 <Label Text="Le tampon grossit tout seul après une coupure puis redescend. Si le son hache souvent, choisissez « Stable »."
                        FontSize="13" TextColor="{StaticResource Gray500}" />
@@ -47,10 +60,21 @@
                 <Switch x:Name="KeepScreenOnSwitch" Grid.Column="1" VerticalOptions="Center" Toggled="OnKeepScreenOnToggled" />
             </Grid>
 
-            <Button x:Name="ToggleButton" Text="Démarrer" Clicked="OnToggleClicked" HeightRequest="52" FontSize="17" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <VerticalStackLayout>
+                    <Label Text="Démarrer à l'ouverture de l'application" />
+                    <Label Text="Le PC peut alors reprendre la diffusion tout seul." FontSize="13" TextColor="{StaticResource Gray500}" />
+                </VerticalStackLayout>
+                <Switch x:Name="AutoStartSwitch" Grid.Column="1" VerticalOptions="Center" Toggled="OnAutoStartToggled" />
+            </Grid>
 
-            <Label FontSize="13" TextColor="{StaticResource Gray500}"
-                   Text="1. Connectez vos écouteurs Bluetooth à ce téléphone.&#10;2. Appuyez sur Démarrer.&#10;3. Sur le PC, choisissez ce téléphone dans Comm Bluetooth puis cliquez sur Diffuser." />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <VerticalStackLayout>
+                    <Label Text="Mode développeur" />
+                    <Label Text="Affiche le détail de la latence et l'état du réseau." FontSize="13" TextColor="{StaticResource Gray500}" />
+                </VerticalStackLayout>
+                <Switch x:Name="DeveloperSwitch" Grid.Column="1" VerticalOptions="Center" Toggled="OnDeveloperToggled" />
+            </Grid>
 
         </VerticalStackLayout>
     </ScrollView>

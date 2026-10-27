@@ -3,7 +3,7 @@ namespace CommBluetooth.Windows;
 internal static class Program
 {
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
         using var single = new Mutex(true, @"Local\CommBluetooth", out bool firstInstance);
         if (!firstInstance)
@@ -14,6 +14,6 @@ internal static class Program
         }
 
         ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm());
+        Application.Run(new MainForm(startHidden: args.Contains(StartupRegistration.MinimizedArgument)));
     }
 }

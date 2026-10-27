@@ -33,8 +33,10 @@ internal sealed class MainForm : Form
     private readonly ComboBox _deviceCombo = new() { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox _qualityCombo = new() { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly Button _startButton = new() { Text = "Diffuser", AutoSize = true, Padding = new Padding(16, 4, 16, 4) };
+    private readonly CheckBox _autoStream = new() { Text = "Diffuser automatiquement vers le dernier téléphone dès qu'il apparaît", AutoSize = true };
+    private readonly CheckBox _startWithWindows = new() { Text = "Lancer avec Windows (dans la zone de notification)", AutoSize = true };
     private readonly Label _status = new() { Dock = DockStyle.Fill, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft };
-    private readonly NotifyIcon _trayIcon = new() { Icon = SystemIcons.Application, Text = "Comm Bluetooth" };
+    private readonly NotifyIcon _trayIcon = new() { Text = "Comm Bluetooth" };
     private readonly ToolStripMenuItem _trayToggle = new("Diffuser");
     private readonly System.Windows.Forms.Timer _statsTimer = new() { Interval = 1000 };
 
@@ -44,13 +46,22 @@ internal sealed class MainForm : Form
     private string _targetName = "";
     private long _lastBytes;
     private bool _trayHintShown;
+    private bool _startHidden;
 
-    public MainForm()
+    /// <summary>Téléphone de la liste vers lequel on diffuse (null si adresse saisie à la main).</summary>
+    private string? _streamingReceiverName;
+
+    /// <summary>L'utilisateur a cliqué sur Arrêter : pas de reprise automatique tant que le téléphone reste visible.</summary>
+    private bool _userStopped;
+
+    public MainForm(bool startHidden = false)
     {
+        _startHidden = startHidden;
         Text = "Comm Bluetooth — son du PC vers le téléphone";
-        Icon = SystemIcons.Application;
-        MinimumSize = new Size(460, 420);
-        Size = new Size(500, 460);
+        Icon = LoadAppIcon();
+        _trayIcon.Icon = Icon;
+        MinimumSize = new Size(480, 480);
+        Size = new Size(520, 520);
         StartPosition = FormStartPosition.CenterScreen;
 
         BuildLayout();
@@ -60,6 +71,27 @@ internal sealed class MainForm : Form
         _qualityCombo.Items.AddRange(Qualities);
         _qualityCombo.SelectedItem = Qualities.FirstOrDefault(q => q.Bitrate == _settings.Bitrate) ?? Qualities[1];
         _manualAddress.Text = _settings.ManualAddress ?? "";
+        _autoStream.Checked = _settings.AutoStream;
+        _startWithWindows.Checked = StartupRegistration.IsEnabled;
+        _autoStream.CheckedChanged += (_, _) =>
+        {
+            _settings.AutoStream = _autoStream.Checked;
+            _settings.Save();
+            if (_autoStream.Checked)
+                RefreshReceivers();
+        };
+        _startWithWindows.CheckedChanged += (_, _) =>
+        {
+            try
+            {
+                StartupRegistration.Set(_startWithWindows.Checked);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+            {
+                MessageBox.Show(this, $"Impossible de modifier le lancement automatique : {ex.Message}", Text,
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        };
 
         _receiverList.SelectedIndexChanged += (_, _) =>
         {
@@ -88,12 +120,13 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             Padding = new Padding(12),
             ColumnCount = 2,
-            RowCount = 6,
+            RowCount = 7,
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -119,12 +152,25 @@ internal sealed class MainForm : Form
         layout.Controls.Add(FieldLabel("Qualité :"), 0, 4);
         layout.Controls.Add(_qualityCombo, 1, 4);
 
+        var options = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown,
+            AutoSize = true,
+            Dock = DockStyle.Fill,
+            WrapContents = false,
+            Margin = new Padding(0, 6, 0, 0),
+        };
+        options.Controls.Add(_autoStream);
+        options.Controls.Add(_startWithWindows);
+        layout.Controls.Add(options, 0, 5);
+        layout.SetColumnSpan(options, 2);
+
         var bottom = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
         bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         bottom.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bottom.Controls.Add(_status, 0, 0);
         bottom.Controls.Add(_startButton, 1, 0);
-        layout.Controls.Add(bottom, 0, 5);
+        layout.Controls.Add(bottom, 0, 6);
         layout.SetColumnSpan(bottom, 2);
 
         Controls.Add(layout);
@@ -221,20 +267,64 @@ internal sealed class MainForm : Form
         if (toSelect is not null)
             _receiverList.SelectedItem = toSelect;
         _receiverList.EndUpdate();
+
+        AutoConnect(receivers);
     }
+
+    /// <summary>
+    /// Reprise automatique : diffuse vers le dernier téléphone dès qu'il apparaît, et le suit
+    /// si son adresse IP change (nouvelle adresse attribuée par la box, redémarrage du Wi-Fi…).
+    /// </summary>
+    private void AutoConnect(IReadOnlyList<DiscoveredReceiver> receivers)
+    {
+        var lastName = _settings.LastReceiverName;
+        if (_userStopped && receivers.All(r => r.Name != lastName))
+            _userStopped = false; // le téléphone est parti : la prochaine apparition relancera la diffusion
+
+        if (_session is null)
+        {
+            if (!_autoStream.Checked || _userStopped || lastName is null || !string.IsNullOrWhiteSpace(_manualAddress.Text))
+                return;
+            if (MostRecent(receivers, lastName) is { } receiver)
+            {
+                _receiverList.SelectedItem = receiver;
+                StartStreaming(interactive: false);
+            }
+        }
+        else if (_streamingReceiverName is { } current
+            && MostRecent(receivers, current) is { } moved
+            && !moved.AudioEndPoint.Equals(_session.Target))
+        {
+            StopStreaming();
+            _receiverList.SelectedItem = moved;
+            StartStreaming(interactive: false);
+        }
+    }
+
+    /// <summary>Après un changement d'IP, l'ancienne entrée reste listée quelques secondes : on prend la plus récente.</summary>
+    private static DiscoveredReceiver? MostRecent(IEnumerable<DiscoveredReceiver> receivers, string name) =>
+        receivers.Where(r => r.Name == name).MaxBy(r => r.LastSeenUtc);
 
     private void ToggleStreaming()
     {
         if (_session is null)
+        {
+            _userStopped = false;
             StartStreaming();
+        }
         else
+        {
+            _userStopped = true;
             StopStreaming();
+        }
     }
 
-    private void StartStreaming()
+    private void StartStreaming(bool interactive = true)
     {
         if (!TryGetTarget(out var target, out var name))
         {
+            if (!interactive)
+                return;
             MessageBox.Show(this,
                 "Choisissez un téléphone dans la liste ou saisissez son adresse IP.\n\n" +
                 "Si la liste reste vide, vérifiez que l'application est ouverte sur le téléphone, " +
@@ -260,12 +350,24 @@ internal sealed class MainForm : Form
         catch (Exception ex)
         {
             StopStreaming();
-            MessageBox.Show(this, $"Impossible de démarrer la diffusion : {ex.Message}", Text,
-                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (interactive)
+            {
+                MessageBox.Show(this, $"Impossible de démarrer la diffusion : {ex.Message}", Text,
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            else
+            {
+                // Pas de fenêtre en boucle à chaque annonce du téléphone : on attend que l'utilisateur relance.
+                _userStopped = true;
+                _status.Text = $"Reprise automatique impossible : {ex.Message}";
+            }
             return;
         }
 
         _targetName = name;
+        _streamingReceiverName = string.IsNullOrWhiteSpace(_manualAddress.Text)
+            ? (_receiverList.SelectedItem as DiscoveredReceiver)?.Name
+            : null;
         _lastBytes = 0;
         _settings.DeviceId = deviceItem.Id;
         _settings.Bitrate = quality.Bitrate;
@@ -366,6 +468,31 @@ internal sealed class MainForm : Form
 
         var tray = $"Comm Bluetooth — vers {_targetName}";
         _trayIcon.Text = tray.Length > 63 ? tray[..63] : tray;
+    }
+
+    /// <summary>Lancé avec Windows : on démarre directement dans la zone de notification.</summary>
+    protected override void SetVisibleCore(bool value)
+    {
+        if (_startHidden)
+        {
+            _startHidden = false;
+            if (!IsHandleCreated)
+                CreateHandle();
+            value = false;
+        }
+        base.SetVisibleCore(value);
+    }
+
+    private static Icon LoadAppIcon()
+    {
+        try
+        {
+            return Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException)
+        {
+            return SystemIcons.Application;
+        }
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
