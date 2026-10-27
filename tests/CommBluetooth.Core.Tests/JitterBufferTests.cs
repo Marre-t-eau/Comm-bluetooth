@@ -104,23 +104,78 @@ public class JitterBufferTests
     }
 
     [Fact]
-    public void RebuffersAfterUnderrun()
+    public void RebuffersAfterSilenceWithoutAddingMargin()
     {
         var frames = EncodeSine(0.1);
-        var buffer = new JitterBuffer(targetFrames: 2);
+        var now = TimeSpan.Zero;
+        var buffer = new JitterBuffer(targetFrames: 2, clock: () => now);
         var output = new float[StreamFormat.FrameInterleavedSamples];
 
         PushAudio(buffer, 0, frames[0]);
         PushAudio(buffer, 1, frames[1]);
         Assert.True(buffer.ReadFrame(output));
         Assert.True(buffer.ReadFrame(output));
-        Assert.False(buffer.ReadFrame(output)); // vide
+        Assert.False(buffer.ReadFrame(output)); // vide : le PC ne joue plus rien
         Assert.Equal(1, buffer.Underruns);
 
+        now += TimeSpan.FromSeconds(2); // le son reprend bien plus tard
         PushAudio(buffer, 2, frames[2]);
         Assert.False(buffer.ReadFrame(output)); // attend de nouveau 2 trames
         PushAudio(buffer, 3, frames[3]);
         Assert.True(buffer.ReadFrame(output));
+        Assert.Equal(2, buffer.EffectiveTargetFrames);
+    }
+
+    [Fact]
+    public void AddsMarginAfterNetworkGlitchThenShrinksWhenCalm()
+    {
+        var frames = EncodeSine(1.0);
+        var now = TimeSpan.Zero;
+        var buffer = new JitterBuffer(targetFrames: 2, clock: () => now);
+        var output = new float[StreamFormat.FrameInterleavedSamples];
+
+        PushAudio(buffer, 0, frames[0]);
+        PushAudio(buffer, 1, frames[1]);
+        buffer.ReadFrame(output);
+        buffer.ReadFrame(output);
+        Assert.False(buffer.ReadFrame(output)); // panne sèche
+
+        now += TimeSpan.FromMilliseconds(50); // le flux reprend aussitôt : trou réseau
+        PushAudio(buffer, 2, frames[2]);
+        Assert.Equal(4, buffer.EffectiveTargetFrames);
+
+        // 20 s sans nouvelle coupure : la marge redescend d'une trame.
+        uint sequence = 3;
+        for (int i = 0; i < 2010; i++)
+        {
+            PushAudio(buffer, sequence, frames[(int)(sequence % (uint)frames.Count)]);
+            sequence++;
+            buffer.ReadFrame(output);
+        }
+        Assert.Equal(3, buffer.EffectiveTargetFrames);
+    }
+
+    [Fact]
+    public void TrimsPersistentExcessOneFramePerSecond()
+    {
+        var frames = EncodeSine(1.0);
+        var buffer = new JitterBuffer(targetFrames: 3);
+        var output = new float[StreamFormat.FrameInterleavedSamples];
+
+        // 8 trames d'avance alors que 3 suffisent, puis un flux parfaitement régulier.
+        uint sequence = 0;
+        for (; sequence < 8; sequence++)
+            PushAudio(buffer, sequence, frames[(int)sequence]);
+        for (int i = 0; i < 300; i++)
+        {
+            buffer.ReadFrame(output);
+            PushAudio(buffer, sequence, frames[(int)(sequence % (uint)frames.Count)]);
+            sequence++;
+        }
+
+        Assert.Equal(3, buffer.FramesTrimmed);
+        Assert.Equal(5, buffer.BufferedFrames);
+        Assert.Equal(0, buffer.FramesConcealed);
     }
 
     [Fact]

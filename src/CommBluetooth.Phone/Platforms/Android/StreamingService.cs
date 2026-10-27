@@ -49,7 +49,7 @@ public sealed class StreamingService : Service
         else
             StartForeground(NotificationId, notification);
 
-        int targetFrames = intent?.GetIntExtra(ExtraTargetFrames, 8) ?? 8;
+        int targetFrames = intent?.GetIntExtra(ExtraTargetFrames, 5) ?? 5;
         try
         {
             PlaybackEngine.Instance.Start(this, DeviceName.Get(this), targetFrames);

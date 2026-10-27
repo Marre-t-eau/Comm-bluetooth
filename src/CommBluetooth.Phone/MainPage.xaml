@@ -32,7 +32,7 @@
             <VerticalStackLayout Spacing="4">
                 <Label Text="Réglage du tampon" TextColor="{StaticResource Gray500}" />
                 <Picker x:Name="LatencyPicker" SelectedIndexChanged="OnLatencyChanged" />
-                <Label Text="Si le son hache, choisissez « Stable ». Pour les vidéos, « Faible » réduit le décalage."
+                <Label Text="Le tampon grossit tout seul après une coupure puis redescend. Si le son hache souvent, choisissez « Stable »."
                        FontSize="13" TextColor="{StaticResource Gray500}" />
             </VerticalStackLayout>
 

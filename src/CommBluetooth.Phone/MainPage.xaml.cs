@@ -11,9 +11,9 @@ public partial class MainPage : ContentPage
 
     private static readonly LatencyChoice[] Choices =
     [
-        new("Faible (≈ 40 ms)", 4),
-        new("Normale (≈ 80 ms)", 8),
-        new("Stable (≈ 150 ms)", 15),
+        new("Faible (≈ 30 ms)", 3),
+        new("Normale (≈ 50 ms)", 5),
+        new("Stable (≈ 100 ms)", 10),
     ];
 
     private IDispatcherTimer? _timer;
@@ -119,6 +119,8 @@ public partial class MainPage : ContentPage
             ? $" — {concealedDelta * 100.0 / playedDelta:0.#} % de pertes masquées"
             : "";
         StatusDetailLabel.Text = $"Depuis le PC {pc}{loss}";
-        LatencyLabel.Text = $"≈ {engine.LatencyMs} ms";
+        int network = engine.NetworkBufferMs;
+        int output = engine.OutputLatencyMs;
+        LatencyLabel.Text = $"≈ {network + output} ms (tampon {network} ms + sortie {output} ms)";
     }
 }

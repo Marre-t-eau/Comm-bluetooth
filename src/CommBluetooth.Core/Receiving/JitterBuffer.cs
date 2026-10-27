@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Concentus;
 using CommBluetooth.Core.Protocol;
 
@@ -9,37 +10,76 @@ namespace CommBluetooth.Core.Receiving;
 /// toutes les 10 ms. Ce tampon garde quelques trames d'avance, les remet dans l'ordre,
 /// masque les trames perdues (PLC d'Opus) et rattrape la dérive entre l'horloge du PC et
 /// celle du téléphone.
+/// <para>
+/// La réserve s'adapte : elle grossit après une coupure due au réseau, puis redescend vers
+/// <see cref="TargetFrames"/> quand le Wi-Fi est calme, et l'avance qui s'installe durablement
+/// au-dessus de la cible est résorbée petit à petit pour ne pas laisser la latence dériver.
+/// </para>
 /// </summary>
 public sealed class JitterBuffer
 {
     /// <summary>Au-delà de cet écart de séquence, on considère que le flux a sauté et on resynchronise.</summary>
     private const int MaxSequenceJump = 200;
 
+    /// <summary>Fenêtre d'observation de la réserve minimale (1 s de lecture).</summary>
+    private const int TrimWindowFrames = 100;
+
+    /// <summary>Marge ajoutée après chaque coupure due au réseau, et plafond de cette marge.</summary>
+    private const int ExtraFramesPerGlitch = 2;
+    private const int MaxExtraFrames = 10;
+
+    /// <summary>Sans nouvelle coupure pendant ce nombre de trames (20 s), on retire une trame de marge.</summary>
+    private const int CalmFramesBeforeShrink = 2000;
+
+    /// <summary>
+    /// Une reprise du flux moins de 250 ms après la panne sèche indique un trou réseau.
+    /// Au-delà, le PC s'était simplement tu (rien ne jouait) et il n'y a rien à corriger.
+    /// </summary>
+    private static readonly TimeSpan GlitchWindow = TimeSpan.FromMilliseconds(250);
+
     private readonly Dictionary<uint, byte[]> _frames = [];
     private readonly IOpusDecoder _decoder = OpusCodecFactory.CreateDecoder(StreamFormat.SampleRate, StreamFormat.Channels);
     private readonly Lock _gate = new();
+    private readonly Func<TimeSpan> _clock;
     private uint? _sessionId;
     private uint _nextSequence;
     private bool _buffering = true;
     private bool _started;
     private int _targetFrames;
+    private int _extraFrames;
+    private int _calmFrames;
+    private int _windowReads;
+    private int _windowMin = int.MaxValue;
+    private TimeSpan? _underrunAt;
 
-    public JitterBuffer(int targetFrames = 6)
+    public JitterBuffer(int targetFrames = 6, Func<TimeSpan>? clock = null)
     {
+        _clock = clock ?? (() => Stopwatch.GetElapsedTime(0));
         TargetFrames = targetFrames;
     }
 
-    /// <summary>Nombre de trames (de 10 ms) à accumuler avant de jouer : c'est la latence ajoutée.</summary>
+    /// <summary>Réserve minimale voulue, en trames de 10 ms : c'est la latence ajoutée par le tampon.</summary>
     public int TargetFrames
     {
         get => _targetFrames;
-        set => _targetFrames = Math.Clamp(value, 1, 50);
+        set
+        {
+            lock (_gate)
+            {
+                _targetFrames = Math.Clamp(value, 1, 50);
+                _extraFrames = 0;
+            }
+        }
     }
+
+    /// <summary>Réserve réellement visée : la cible plus la marge ajoutée après des coupures.</summary>
+    public int EffectiveTargetFrames { get { lock (_gate) return _targetFrames + _extraFrames; } }
 
     public int BufferedFrames { get { lock (_gate) return _frames.Count; } }
     public long FramesPlayed { get; private set; }
     public long FramesConcealed { get; private set; }
     public long FramesDropped { get; private set; }
+    public long FramesTrimmed { get; private set; }
     public long Underruns { get; private set; }
 
     /// <summary>Ajoute un paquet reçu du réseau (appelé par le thread de réception).</summary>
@@ -78,6 +118,17 @@ public sealed class JitterBuffer
                 ResetLocked(header.SessionId, header.Sequence);
             }
 
+            if (_underrunAt is { } underrunAt)
+            {
+                if (_clock() - underrunAt < GlitchWindow)
+                {
+                    // Le flux reprend juste après la panne : c'était le réseau, on prend plus de marge.
+                    _extraFrames = Math.Min(_extraFrames + ExtraFramesPerGlitch, MaxExtraFrames);
+                    _calmFrames = 0;
+                }
+                _underrunAt = null;
+            }
+
             _frames[header.Sequence] = payload.ToArray();
         }
     }
@@ -94,14 +145,16 @@ public sealed class JitterBuffer
 
         lock (_gate)
         {
+            int target = _targetFrames + _extraFrames;
             if (_buffering)
             {
-                if (_frames.Count < _targetFrames)
+                if (_frames.Count < target)
                 {
                     output.Clear();
                     return false;
                 }
                 _buffering = false;
+                ResetTrimWindow();
             }
 
             if (_frames.Count == 0)
@@ -109,20 +162,34 @@ public sealed class JitterBuffer
                 // Plus rien en réserve : le PC s'est tu ou le réseau a décroché. On se remet à accumuler.
                 Underruns++;
                 _buffering = true;
+                _underrunAt = _clock();
                 output.Clear();
                 return false;
             }
 
-            // Dérive d'horloge ou rafale réseau : trop d'avance accumulée, on saute les plus anciennes.
-            int excess = _frames.Count - (_targetFrames + Math.Max(10, _targetFrames));
+            // Rafale réseau : beaucoup trop d'avance d'un coup, on saute immédiatement les plus anciennes.
+            int excess = _frames.Count - (target + Math.Max(10, target));
             while (excess > 0)
             {
-                if (_frames.Remove(_nextSequence))
-                {
-                    FramesDropped++;
+                if (DropNextLocked())
                     excess--;
-                }
-                _nextSequence++;
+            }
+
+            // Dérive lente : si la réserve n'est jamais descendue jusqu'à la cible pendant toute
+            // une seconde, l'excédent est inutile et ne fait qu'ajouter du décalage. On retire une
+            // trame par seconde (10 ms), assez discret pour ne pas s'entendre.
+            _windowMin = Math.Min(_windowMin, _frames.Count);
+            if (++_windowReads >= TrimWindowFrames)
+            {
+                if (_windowMin > target && DropNextLocked())
+                    FramesTrimmed++;
+                ResetTrimWindow();
+            }
+
+            if (_extraFrames > 0 && ++_calmFrames >= CalmFramesBeforeShrink)
+            {
+                _extraFrames--;
+                _calmFrames = 0;
             }
 
             int samples;
@@ -151,6 +218,22 @@ public sealed class JitterBuffer
             ResetLocked(null, 0);
     }
 
+    /// <summary>Saute la prochaine position de lecture ; renvoie true si une trame reçue a été jetée.</summary>
+    private bool DropNextLocked()
+    {
+        bool dropped = _frames.Remove(_nextSequence);
+        if (dropped)
+            FramesDropped++;
+        _nextSequence++;
+        return dropped;
+    }
+
+    private void ResetTrimWindow()
+    {
+        _windowReads = 0;
+        _windowMin = int.MaxValue;
+    }
+
     private void ResetLocked(uint? sessionId, uint nextSequence)
     {
         _frames.Clear();
@@ -158,6 +241,8 @@ public sealed class JitterBuffer
         _nextSequence = nextSequence;
         _buffering = true;
         _started = false;
+        _underrunAt = null;
+        ResetTrimWindow();
         _decoder.ResetState();
     }
 }
