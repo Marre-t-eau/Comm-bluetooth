@@ -9,6 +9,10 @@ public partial class MainPage : ContentPage
 
     private const string LatencyPreference = "latencyIndex";
     private const string KeepScreenOnPreference = "keepScreenOn";
+    private const string AutoStartPreference = "autoStart";
+    private const string DeveloperPreference = "developerMode";
+
+    private bool _autoStartDone;
 
     private static readonly LatencyChoice[] Choices =
     [
@@ -27,6 +31,17 @@ public partial class MainPage : ContentPage
         LatencyPicker.ItemsSource = Choices;
         LatencyPicker.SelectedIndex = Math.Clamp(Preferences.Get(LatencyPreference, 1), 0, Choices.Length - 1);
         KeepScreenOnSwitch.IsToggled = Preferences.Get(KeepScreenOnPreference, false);
+        AutoStartSwitch.IsToggled = Preferences.Get(AutoStartPreference, false);
+        DeveloperSwitch.IsToggled = Preferences.Get(DeveloperPreference, false);
+    }
+
+    private void OnAutoStartToggled(object? sender, ToggledEventArgs e) => Preferences.Set(AutoStartPreference, e.Value);
+
+    private void OnDeveloperToggled(object? sender, ToggledEventArgs e)
+    {
+        Preferences.Set(DeveloperPreference, e.Value);
+        DiagnosticPanel.IsVisible = e.Value;
+        Refresh();
     }
 
     private void OnKeepScreenOnToggled(object? sender, ToggledEventArgs e)
@@ -49,6 +64,11 @@ public partial class MainPage : ContentPage
         _timer.Tick += OnTick;
         _timer.Start();
         Refresh();
+
+        // Une seule fois par lancement : si l'utilisateur arrête ensuite, on ne relance pas derrière lui.
+        if (!_autoStartDone && AutoStartSwitch.IsToggled && !PlaybackEngine.Instance.IsRunning)
+            OnToggleClicked(this, EventArgs.Empty);
+        _autoStartDone = true;
     }
 
     protected override void OnDisappearing()
@@ -131,7 +151,9 @@ public partial class MainPage : ContentPage
         StatusDetailLabel.Text = $"Depuis le PC {pc}{loss}";
         int network = engine.NetworkBufferMs;
         int output = engine.OutputLatencyMs;
-        LatencyLabel.Text = $"≈ {network + output} ms (tampon {network} ms + sortie {output} ms)";
+        LatencyLabel.Text = DeveloperSwitch.IsToggled
+            ? $"≈ {network + output} ms (tampon {network} ms + sortie {output} ms)"
+            : $"≈ {network + output} ms";
 
         // Sortie = tampon Android + Bluetooth : la différence est le délai propre aux écouteurs.
         int android = engine.AndroidBufferMs;

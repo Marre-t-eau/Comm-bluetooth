@@ -12,7 +12,9 @@ PC Windows ──(Wi-Fi, Opus/UDP)──▶ Téléphone Android ──(Bluetooth
 |---|---|---|
 | 1 | Programme Windows : capture du son, compression Opus, envoi réseau, interface | ✅ |
 | 2 | Application Android (.NET MAUI) : réception, tampon anti-coupures, lecture vers les écouteurs | ✅ |
-| 3 | Finitions : latence, reconnexion automatique, .exe/.apk prêts à installer, guide | à venir |
+| 3 | Finitions : latence, reconnexion automatique, .exe/.apk prêts à installer, guide | ✅ |
+
+**Pour installer et utiliser l'application, voir le [guide](docs/GUIDE.md).**
 
 ## Organisation du code
 
@@ -54,6 +56,10 @@ dotnet publish src/CommBluetooth.Phone -c Release -f net10.0-android
 ```
 
 Sur le téléphone, autorisez l'installation d'applications de source inconnue, installez l'`.apk`, connectez vos écouteurs, puis appuyez sur **Démarrer**.
+
+### Publier une version
+
+Onglet **Actions** → **Release** → **Run workflow** : compile le `.exe` Windows autonome et l'`.apk`, et les publie dans une Release GitHub (détails dans le [guide](docs/GUIDE.md)).
 
 ### Tester sans téléphone
 

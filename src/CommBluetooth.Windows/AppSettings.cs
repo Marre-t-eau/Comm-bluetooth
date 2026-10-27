@@ -17,6 +17,9 @@ internal sealed class AppSettings
     /// <summary>Dernière adresse saisie à la main (« 192.168.1.42 » ou « 192.168.1.42:50506 »).</summary>
     public string? ManualAddress { get; set; }
 
+    /// <summary>Diffuser dès que le dernier téléphone utilisé apparaît sur le réseau.</summary>
+    public bool AutoStream { get; set; } = true;
+
     /// <summary>Nom du dernier téléphone utilisé, pour le resélectionner automatiquement.</summary>
     public string? LastReceiverName { get; set; }
 

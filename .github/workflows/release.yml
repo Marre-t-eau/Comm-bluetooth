@@ -1,0 +1,88 @@
+name: Release
+
+# Lancé à la main depuis l'onglet Actions : compile le .exe Windows et l'.apk Android,
+# puis publie une Release GitHub « v<version> » contenant les deux fichiers.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Numéro de version (ex. 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet test tests/CommBluetooth.Core.Tests -c Release
+      - name: Publier un .exe autonome (sans installer .NET)
+        run: >
+          dotnet publish src/CommBluetooth.Windows -c Release -r win-x64 --self-contained
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
+          -p:Version=${{ inputs.version }} -o publish/windows
+      - run: Copy-Item publish/windows/CommBluetooth.exe "CommBluetooth-PC-${{ inputs.version }}.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: CommBluetooth-PC-*.exe
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '21'
+      - run: dotnet workload install maui-android
+      - name: Clé de signature (facultative, voir docs/GUIDE.md)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/commbluetooth.keystore"
+            echo "SIGNING_ARGS=-p:AndroidKeyStore=true -p:AndroidSigningKeyStore=$RUNNER_TEMP/commbluetooth.keystore -p:AndroidSigningKeyAlias=commbluetooth -p:AndroidSigningKeyPass=env:ANDROID_KEYSTORE_PASSWORD -p:AndroidSigningStorePass=env:ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          fi
+      - name: Publier l'.apk
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: >
+          dotnet publish src/CommBluetooth.Phone -c Release -f net10.0-android -o publish/android
+          -p:ApplicationDisplayVersion=${{ inputs.version }} -p:ApplicationVersion=${{ github.run_number }}
+          $SIGNING_ARGS
+      - run: cp publish/android/*-Signed.apk "CommBluetooth-Android-${{ inputs.version }}.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: CommBluetooth-Android-*.apk
+
+  release:
+    needs: [windows, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: Comm Bluetooth ${{ inputs.version }}
+          target_commitish: ${{ github.sha }}
+          body: |
+            - **PC Windows** : `CommBluetooth-PC-${{ inputs.version }}.exe`, rien à installer, double-cliquez.
+            - **Téléphone Android** : `CommBluetooth-Android-${{ inputs.version }}.apk`, à installer sur le téléphone.
+
+            Mode d'emploi : [docs/GUIDE.md](https://github.com/${{ github.repository }}/blob/main/docs/GUIDE.md)
+          files: |
+            CommBluetooth-PC-*.exe
+            CommBluetooth-Android-*.apk
