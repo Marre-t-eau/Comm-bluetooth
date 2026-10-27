@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="456" height="456" viewBox="0 0 456 456" xmlns="http://www.w3.org/2000/svg">
+  <!-- Casque -->
+  <path d="M148 270 v-30 a80 80 0 0 1 160 0 v30" fill="none" stroke="#ffffff" stroke-width="22" stroke-linecap="round"/>
+  <rect x="128" y="258" width="44" height="72" rx="18" fill="#ffffff"/>
+  <rect x="284" y="258" width="44" height="72" rx="18" fill="#ffffff"/>
+  <!-- Ondes -->
+  <path d="M196 150 a46 46 0 0 1 64 0" fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round"/>
+  <path d="M176 126 a76 76 0 0 1 104 0" fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round" opacity="0.7"/>
+</svg>

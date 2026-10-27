@@ -1,0 +1,47 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CommBluetooth.Phone.MainPage"
+             Title="Comm Bluetooth">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="24,32" Spacing="20">
+
+            <Label Text="Comm Bluetooth" FontSize="28" FontFamily="OpenSansSemibold" />
+            <Label Text="Écoutez le son du PC dans vos écouteurs Bluetooth, à travers ce téléphone."
+                   FontSize="15" TextColor="{StaticResource Gray500}" />
+
+            <Border Padding="20" StrokeShape="RoundRectangle 16" Stroke="{StaticResource Gray200}">
+                <VerticalStackLayout Spacing="6">
+                    <Label x:Name="StatusLabel" Text="Arrêté" FontSize="22" FontFamily="OpenSansSemibold" />
+                    <Label x:Name="StatusDetailLabel" FontSize="14" TextColor="{StaticResource Gray500}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="16" RowSpacing="10">
+                <Label Text="Nom sur le réseau" TextColor="{StaticResource Gray500}" />
+                <Label x:Name="NameLabel" Grid.Column="1" />
+                <Label Text="Adresse IP" Grid.Row="1" TextColor="{StaticResource Gray500}" />
+                <Label x:Name="AddressLabel" Grid.Row="1" Grid.Column="1" />
+                <Label Text="Sortie audio" Grid.Row="2" TextColor="{StaticResource Gray500}" />
+                <Label x:Name="OutputLabel" Grid.Row="2" Grid.Column="1" Text="—" />
+                <Label Text="Latence" Grid.Row="3" TextColor="{StaticResource Gray500}" />
+                <Label x:Name="LatencyLabel" Grid.Row="3" Grid.Column="1" Text="—" />
+            </Grid>
+
+            <VerticalStackLayout Spacing="4">
+                <Label Text="Réglage du tampon" TextColor="{StaticResource Gray500}" />
+                <Picker x:Name="LatencyPicker" SelectedIndexChanged="OnLatencyChanged" />
+                <Label Text="Si le son hache, choisissez « Stable ». Pour les vidéos, « Faible » réduit le décalage."
+                       FontSize="13" TextColor="{StaticResource Gray500}" />
+            </VerticalStackLayout>
+
+            <Button x:Name="ToggleButton" Text="Démarrer" Clicked="OnToggleClicked" HeightRequest="52" FontSize="17" />
+
+            <Label FontSize="13" TextColor="{StaticResource Gray500}"
+                   Text="1. Connectez vos écouteurs Bluetooth à ce téléphone.&#10;2. Appuyez sur Démarrer.&#10;3. Sur le PC, choisissez ce téléphone dans Comm Bluetooth puis cliquez sur Diffuser." />
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>
