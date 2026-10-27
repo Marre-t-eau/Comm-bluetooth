@@ -107,7 +107,7 @@ public sealed class PlaybackEngine
 
     private void PlaybackLoop()
     {
-        AndroidProcess.SetThreadPriority(ThreadPriority.UrgentAudio);
+        AndroidProcess.SetThreadPriority(Android.OS.ThreadPriority.UrgentAudio);
         var frame = new float[StreamFormat.FrameInterleavedSamples];
         var receiver = _receiver!;
         var track = _track!;
@@ -162,7 +162,7 @@ public sealed class PlaybackEngine
             return;
 
 #pragma warning disable CA1422 // FullHighPerf est remplacé par FullLowLatency à partir d'Android 10
-        var mode = OperatingSystem.IsAndroidVersionAtLeast(29) ? WifiMode.FullLowLatency : WifiMode.FullHighPerf;
+        var mode = OperatingSystem.IsAndroidVersionAtLeast(29) ? Android.Net.WifiMode.FullLowLatency : Android.Net.WifiMode.FullHighPerf;
 #pragma warning restore CA1422
         _wifiLock = wifi.CreateWifiLock(mode, "CommBluetooth");
         _wifiLock?.SetReferenceCounted(false);
@@ -192,10 +192,11 @@ public sealed class PlaybackEngine
     private static string DescribeType(AudioDeviceType type) => type switch
     {
         AudioDeviceType.BluetoothA2dp => "Bluetooth",
-        AudioDeviceType.BleHeadset or AudioDeviceType.BleSpeaker or AudioDeviceType.BleBroadcast => "Bluetooth LE",
         AudioDeviceType.WiredHeadphones or AudioDeviceType.WiredHeadset => "filaire",
         AudioDeviceType.UsbHeadset or AudioDeviceType.UsbDevice => "USB",
         AudioDeviceType.BuiltinSpeaker => "haut-parleur du téléphone",
+        // Les types BLE (Android 12+) sont reconnus par leur nom pour rester compatible Android 8.
+        _ when type.ToString().StartsWith("Ble", StringComparison.Ordinal) => "Bluetooth LE",
         _ => type.ToString(),
     };
 }
