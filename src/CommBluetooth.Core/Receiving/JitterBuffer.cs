@@ -51,6 +51,10 @@ public sealed class JitterBuffer
     private int _windowReads;
     private int _windowMin = int.MaxValue;
     private TimeSpan? _underrunAt;
+    private TimeSpan? _lastArrival;
+    private TimeSpan _gapWindowStart;
+    private TimeSpan _gapWindowMax;
+    private TimeSpan _lastGapWindowMax;
 
     public JitterBuffer(int targetFrames = 6, Func<TimeSpan>? clock = null)
     {
@@ -76,6 +80,16 @@ public sealed class JitterBuffer
     public int EffectiveTargetFrames { get { lock (_gate) return _targetFrames + _extraFrames; } }
 
     public int BufferedFrames { get { lock (_gate) return _frames.Count; } }
+
+    /// <summary>
+    /// Plus grand écart entre deux paquets audio reçus sur les 2 dernières secondes, en ms.
+    /// Le PC en envoie un toutes les 10 ms : un écart de 100 ms révèle un Wi-Fi qui livre par rafales
+    /// (économie d'énergie), et c'est ce qui oblige le tampon à grossir.
+    /// </summary>
+    public int MaxArrivalGapMs
+    {
+        get { lock (_gate) return (int)Math.Max(_gapWindowMax.TotalMilliseconds, _lastGapWindowMax.TotalMilliseconds); }
+    }
     public long FramesPlayed { get; private set; }
     public long FramesConcealed { get; private set; }
     public long FramesDropped { get; private set; }
@@ -118,9 +132,12 @@ public sealed class JitterBuffer
                 ResetLocked(header.SessionId, header.Sequence);
             }
 
+            var now = _clock();
+            TrackArrivalGap(now);
+
             if (_underrunAt is { } underrunAt)
             {
-                if (_clock() - underrunAt < GlitchWindow)
+                if (now - underrunAt < GlitchWindow)
                 {
                     // Le flux reprend juste après la panne : c'était le réseau, on prend plus de marge.
                     _extraFrames = Math.Min(_extraFrames + ExtraFramesPerGlitch, MaxExtraFrames);
@@ -216,6 +233,21 @@ public sealed class JitterBuffer
     {
         lock (_gate)
             ResetLocked(null, 0);
+    }
+
+    private void TrackArrivalGap(TimeSpan now)
+    {
+        // Les pauses du PC (rien ne joue) ne sont pas de la gigue réseau : on ignore les écarts d'une seconde ou plus.
+        if (_lastArrival is { } last && now - last < TimeSpan.FromSeconds(1) && now - last > _gapWindowMax)
+            _gapWindowMax = now - last;
+        _lastArrival = now;
+
+        if (now - _gapWindowStart >= TimeSpan.FromSeconds(2))
+        {
+            _lastGapWindowMax = _gapWindowMax;
+            _gapWindowMax = TimeSpan.Zero;
+            _gapWindowStart = now;
+        }
     }
 
     /// <summary>Saute la prochaine position de lecture ; renvoie true si une trame reçue a été jetée.</summary>

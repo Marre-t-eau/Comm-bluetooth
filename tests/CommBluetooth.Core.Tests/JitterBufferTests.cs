@@ -247,4 +247,23 @@ public class JitterBufferTests
         using var probe = new System.Net.Sockets.UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
         return ((IPEndPoint)probe.Client.LocalEndPoint!).Port;
     }
+
+    [Fact]
+    public void ReportsBurstyArrivals()
+    {
+        var frames = EncodeSine(0.5);
+        var now = TimeSpan.Zero;
+        var buffer = new JitterBuffer(targetFrames: 3, clock: () => now);
+
+        // 10 trames d'un coup toutes les 100 ms, comme un Wi-Fi en économie d'énergie.
+        uint sequence = 0;
+        for (int burst = 0; burst < 4; burst++)
+        {
+            for (int i = 0; i < 10; i++)
+                PushAudio(buffer, sequence, frames[(int)sequence++]);
+            now += TimeSpan.FromMilliseconds(100);
+        }
+
+        Assert.Equal(100, buffer.MaxArrivalGapMs);
+    }
 }

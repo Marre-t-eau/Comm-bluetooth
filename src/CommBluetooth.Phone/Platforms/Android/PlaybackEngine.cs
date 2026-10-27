@@ -71,6 +71,9 @@ public sealed class PlaybackEngine
         }
     }
 
+    /// <summary>Taille du tampon d'AudioTrack en ms (incluse dans la sortie), pour le diagnostic.</summary>
+    public int AndroidBufferMs => (_track?.BufferSizeInFrames ?? 0) * 1000 / StreamFormat.SampleRate;
+
     /// <summary>Latence totale côté téléphone (tampon réseau + sortie), en ms.</summary>
     public int LatencyMs => _track is null ? 0 : NetworkBufferMs + OutputLatencyMs;
 
