@@ -23,6 +23,8 @@ public sealed class PlaybackEngine
     private Thread? _thread;
     private WifiManager.WifiLock? _wifiLock;
     private volatile bool _running;
+    private long _framesWritten;
+    private int _burstFrames = StreamFormat.FrameSamplesPerChannel;
 
     private PlaybackEngine() { }
 
@@ -41,20 +43,39 @@ public sealed class PlaybackEngine
         }
     }
 
-    /// <summary>Latence de bout en bout côté téléphone (tampon réseau + tampon audio), en ms.</summary>
-    public int LatencyMs
+    /// <summary>Latence ajoutée par le tampon réseau, en ms.</summary>
+    public int NetworkBufferMs => (_receiver?.Buffer.BufferedFrames ?? 0) * StreamFormat.FrameDurationMs;
+
+    /// <summary>
+    /// Latence de sortie mesurée par Android : du moment où l'on écrit le son jusqu'à ce qu'il soit
+    /// joué. Sur la plupart des téléphones elle inclut le Bluetooth ; sinon c'est le tampon d'AudioTrack.
+    /// </summary>
+    public int OutputLatencyMs
     {
         get
         {
-            var receiver = _receiver;
             var track = _track;
-            if (receiver is null || track is null)
+            if (track is null)
                 return 0;
-            int bufferMs = receiver.Buffer.BufferedFrames * StreamFormat.FrameDurationMs;
-            int trackMs = track.BufferSizeInFrames * 1000 / StreamFormat.SampleRate;
-            return bufferMs + trackMs;
+
+            using var timestamp = new AudioTimestamp();
+            if (track.GetTimestamp(timestamp))
+            {
+                long pending = Interlocked.Read(ref _framesWritten) - timestamp.FramePosition;
+                double sinceTimestampMs = (Java.Lang.JavaSystem.NanoTime() - timestamp.NanoTime) / 1e6;
+                double ms = pending * 1000.0 / StreamFormat.SampleRate - sinceTimestampMs;
+                if (ms > 0)
+                    return (int)ms;
+            }
+            return track.BufferSizeInFrames * 1000 / StreamFormat.SampleRate;
         }
     }
+
+    /// <summary>Taille du tampon d'AudioTrack en ms (incluse dans la sortie), pour le diagnostic.</summary>
+    public int AndroidBufferMs => (_track?.BufferSizeInFrames ?? 0) * 1000 / StreamFormat.SampleRate;
+
+    /// <summary>Latence totale côté téléphone (tampon réseau + sortie), en ms.</summary>
+    public int LatencyMs => _track is null ? 0 : NetworkBufferMs + OutputLatencyMs;
 
     public void Start(Context context, string name, int targetFrames)
     {
@@ -70,7 +91,8 @@ public sealed class PlaybackEngine
             try
             {
                 _receiver = new StreamReceiver(name, targetFrames);
-                _track = CreateTrack();
+                _track = CreateTrack(context);
+                Interlocked.Exchange(ref _framesWritten, 0);
             }
             catch (Exception ex)
             {
@@ -111,6 +133,8 @@ public sealed class PlaybackEngine
         var frame = new float[StreamFormat.FrameInterleavedSamples];
         var receiver = _receiver!;
         var track = _track!;
+        int underruns = track.UnderrunCount;
+        int writes = 0;
 
         while (_running)
         {
@@ -123,10 +147,21 @@ public sealed class PlaybackEngine
                 Error = $"Erreur de lecture audio ({written}).";
                 break;
             }
+            Interlocked.Add(ref _framesWritten, written / StreamFormat.Channels);
+
+            // Tampon de sortie volontairement petit : s'il se vide (coupure audible), on l'agrandit
+            // d'un cran, jusqu'à trouver la taille la plus basse qui tient sur ce téléphone.
+            if (++writes % 50 == 0 && track.UnderrunCount > underruns)
+            {
+                underruns = track.UnderrunCount;
+                int size = track.BufferSizeInFrames + _burstFrames;
+                if (size <= track.BufferCapacityInFrames)
+                    track.SetBufferSizeInFrames(size);
+            }
         }
     }
 
-    private static AudioTrack CreateTrack()
+    private AudioTrack CreateTrack(Context context)
     {
         var attributes = new AudioAttributes.Builder()
             .SetUsage(AudioUsageKind.Media)!
@@ -138,18 +173,27 @@ public sealed class PlaybackEngine
             .SetChannelMask(ChannelOut.Stereo)!
             .Build()!;
 
-        // Le tampon d'AudioTrack s'ajoute à la latence : on prend le minimum du système,
-        // avec au moins 4 trames de 10 ms pour absorber les petits retards du thread.
-        int minBytes = AudioTrack.GetMinBufferSize(StreamFormat.SampleRate, ChannelOut.Stereo, Encoding.PcmFloat);
-        int bytes = Math.Max(minBytes, StreamFormat.FrameInterleavedSamples * sizeof(float) * 4);
+        // L'écriture bloquante garde le tampon d'AudioTrack toujours plein : toute sa taille s'ajoute
+        // à la latence. On alloue large (pour pouvoir l'agrandir si besoin) mais on n'en utilise
+        // au départ que deux « rafales » du mixeur Android, et au moins 20 ms.
+        var audioManager = context.GetSystemService(Context.AudioService) as AudioManager;
+        if (int.TryParse(audioManager?.GetProperty(AudioManager.PropertyOutputFramesPerBuffer), out int burst) && burst > 0)
+            _burstFrames = burst;
 
-        return new AudioTrack.Builder()
+        int minBytes = AudioTrack.GetMinBufferSize(StreamFormat.SampleRate, ChannelOut.Stereo, Encoding.PcmFloat);
+        int bytes = Math.Max(minBytes, StreamFormat.FrameInterleavedSamples * sizeof(float) * 10);
+
+        var track = new AudioTrack.Builder()
             .SetAudioAttributes(attributes)!
             .SetAudioFormat(format)!
             .SetBufferSizeInBytes(bytes)!
             .SetTransferMode(AudioTrackMode.Stream)!
             .SetPerformanceMode(AudioTrackPerformanceMode.LowLatency)!
             .Build()!;
+
+        int startFrames = Math.Max(2 * _burstFrames, 2 * StreamFormat.FrameSamplesPerChannel);
+        track.SetBufferSizeInFrames(Math.Min(startFrames, track.BufferCapacityInFrames));
+        return track;
     }
 
     /// <summary>

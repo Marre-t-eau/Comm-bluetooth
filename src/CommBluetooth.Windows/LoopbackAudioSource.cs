@@ -24,6 +24,8 @@ internal sealed class LoopbackAudioSource : IDisposable
             .WithDevice(device)
             .WithLoopbackCapture()
             .WithSharedMode()
+            // 100 ms par défaut : autant de décalage en plus. 20 ms suffit pour une capture loopback.
+            .WithBufferLength(20)
             .Build();
         _capture.DataAvailable += OnDataAvailable;
         _capture.RecordingStopped += (_, e) => Stopped?.Invoke(this, e.Exception);

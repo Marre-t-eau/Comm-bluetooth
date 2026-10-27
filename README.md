@@ -30,7 +30,7 @@ PC Windows ──(Wi-Fi, Opus/UDP)──▶ Téléphone Android ──(Bluetooth
 * **Conversion** : n'importe quel format (mono, 5.1, 44,1 / 96 kHz…) est ramené en stéréo 48 kHz.
 * **Compression** : Opus en trames de 10 ms (96 à 256 kb/s), via [Concentus](https://github.com/lostromb/concentus), 100 % C#.
 * **Réseau** : UDP. Chaque paquet porte un identifiant de session et un numéro de séquence pour repérer les pertes. Un *keepalive* est envoyé pendant les silences.
-* **Réception (téléphone)** : un tampon anti-gigue remet les trames dans l'ordre, masque les pertes avec Opus et jette l'avance excessive pour garder une latence stable (≈ 40, 80 ou 150 ms au choix). Le son est joué avec AudioTrack ; Android l'envoie de lui-même aux écouteurs Bluetooth connectés.
+* **Réception (téléphone)** : un tampon anti-gigue remet les trames dans l'ordre, masque les pertes avec Opus et jette l'avance excessive pour garder une latence stable (≈ 30, 50 ou 100 ms au choix, avec une marge automatique après une coupure). Le son est joué avec AudioTrack ; Android l'envoie de lui-même aux écouteurs Bluetooth connectés.
 * **Découverte** : le téléphone annonce sa présence en broadcast (port UDP 50505) ; le programme Windows l'affiche dans la liste. Le son est envoyé sur le port UDP 50506.
 
 Le détail du format des paquets est dans [`Packet.cs`](src/CommBluetooth.Core/Protocol/Packet.cs).

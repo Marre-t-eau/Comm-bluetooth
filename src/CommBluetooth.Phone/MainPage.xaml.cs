@@ -8,12 +8,13 @@ public partial class MainPage : ContentPage
     }
 
     private const string LatencyPreference = "latencyIndex";
+    private const string KeepScreenOnPreference = "keepScreenOn";
 
     private static readonly LatencyChoice[] Choices =
     [
-        new("Faible (≈ 40 ms)", 4),
-        new("Normale (≈ 80 ms)", 8),
-        new("Stable (≈ 150 ms)", 15),
+        new("Faible (≈ 30 ms)", 3),
+        new("Normale (≈ 50 ms)", 5),
+        new("Stable (≈ 100 ms)", 10),
     ];
 
     private IDispatcherTimer? _timer;
@@ -25,6 +26,13 @@ public partial class MainPage : ContentPage
         InitializeComponent();
         LatencyPicker.ItemsSource = Choices;
         LatencyPicker.SelectedIndex = Math.Clamp(Preferences.Get(LatencyPreference, 1), 0, Choices.Length - 1);
+        KeepScreenOnSwitch.IsToggled = Preferences.Get(KeepScreenOnPreference, false);
+    }
+
+    private void OnKeepScreenOnToggled(object? sender, ToggledEventArgs e)
+    {
+        Preferences.Set(KeepScreenOnPreference, e.Value);
+        DeviceDisplay.Current.KeepScreenOn = e.Value;
     }
 
     private LatencyChoice SelectedLatency => (LatencyChoice?)LatencyPicker.SelectedItem ?? Choices[1];
@@ -94,6 +102,7 @@ public partial class MainPage : ContentPage
             StatusDetailLabel.Text = engine.Error ?? "Appuyez sur Démarrer pour que le PC trouve ce téléphone.";
             OutputLabel.Text = "—";
             LatencyLabel.Text = "—";
+            DiagnosticLabel.Text = "—";
             return;
         }
 
@@ -104,6 +113,7 @@ public partial class MainPage : ContentPage
             StatusLabel.Text = "En attente du PC…";
             StatusDetailLabel.Text = "Lancez la diffusion depuis Comm Bluetooth sur le PC.";
             LatencyLabel.Text = "—";
+            DiagnosticLabel.Text = "—";
             return;
         }
 
@@ -119,6 +129,15 @@ public partial class MainPage : ContentPage
             ? $" — {concealedDelta * 100.0 / playedDelta:0.#} % de pertes masquées"
             : "";
         StatusDetailLabel.Text = $"Depuis le PC {pc}{loss}";
-        LatencyLabel.Text = $"≈ {engine.LatencyMs} ms";
+        int network = engine.NetworkBufferMs;
+        int output = engine.OutputLatencyMs;
+        LatencyLabel.Text = $"≈ {network + output} ms (tampon {network} ms + sortie {output} ms)";
+
+        // Sortie = tampon Android + Bluetooth : la différence est le délai propre aux écouteurs.
+        int android = engine.AndroidBufferMs;
+        int margin = (buffer.EffectiveTargetFrames - buffer.TargetFrames) * Core.Protocol.StreamFormat.FrameDurationMs;
+        DiagnosticLabel.Text =
+            $"Paquets espacés jusqu'à {buffer.MaxArrivalGapMs} ms (idéal : 10)\n" +
+            $"Marge auto +{margin} ms · tampon Android {android} ms · Bluetooth ≈ {Math.Max(0, output - android)} ms";
     }
 }
